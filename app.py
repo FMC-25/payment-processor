@@ -15,8 +15,10 @@ BANK_NAME_MAP = {
     "People's Bank": "Peoples Bank",
     "Commercial Bank Of Ceylon PLC": "Commercial Bank PLC",
 }
-NSB_ACCOUNT_L = 857
-OTHER_ACCOUNT_L = 100011378759
+
+# Fetch secure account numbers from Streamlit Secrets
+NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
+OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
 COL_WIDTHS = {
     'A': 4.62, 'B': 4.62, 'C': 3.62, 'D': 12.62, 'E': 20.62,
@@ -255,7 +257,7 @@ if st.button("Run Process"):
                 nsb_xls = generate_excel_bytes(nsb_df, NSB_ACCOUNT_L, is_nsb=True)
                 st.download_button("Download NSB Excel", nsb_xls, "output_NSB.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             with col5:
-                nsb_prn = generate_prn_bytes(nsb_df, "857", lambda acc: acc)
+                nsb_prn = generate_prn_bytes(nsb_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc)
                 st.download_button("Download NSB PRN", nsb_prn, "output_NSB.prn", "text/plain")
 
             st.subheader("Other Banks Files")
@@ -266,7 +268,7 @@ if st.button("Run Process"):
                 other_xls = generate_excel_bytes(other_banks_df, OTHER_ACCOUNT_L, is_nsb=False)
                 st.download_button("Download Other Banks Excel", other_xls, "output_OtherBanks.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             with col8:
-                other_prn = generate_prn_bytes(other_banks_df, "100011378759", lambda acc: acc.zfill(12))
+                other_prn = generate_prn_bytes(other_banks_df, str(st.secrets["OTHER_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download Other Banks PRN", other_prn, "output_OtherBanks.prn", "text/plain")
 
         except Exception as e:
