@@ -129,20 +129,69 @@ def generate_excel_bytes(df, account_l, is_nsb):
     buffer.seek(0)
     return buffer
 
-def generate_prn_bytes(df):
-    lines = ["BankCode|BranchCode|AccountNo|Amount|CustomerName|RefNo"]
+def generate_prn_bytes(df, account_l_str, acc_format_fn):
+    def _clean_acc(acc):
+        acc = str(acc).strip().replace("-", "").replace(" ", "")
+        if len(acc) == 15:
+            acc = acc[3:]
+        elif len(acc) > 12:
+            acc = acc[-12:]
+        return acc
+
+    def _safe_code(val, width):
+        v = str(val).strip()
+        try:
+            int(v)
+            return v.zfill(width)
+        except ValueError:
+            return "0" * width
+
+    def _fmt_amount(amount):
+        try:    return str(int(round(float(amount) * 100))).zfill(12)
+        except: return "0" * 12
+
+    def _fmt_maturity(mat):
+        if pd.isna(mat): return "000000"
+        if isinstance(mat, (datetime.datetime, datetime.date)):
+            return mat.strftime("%y%m%d")
+        try:    return pd.to_datetime(mat).strftime("%y%m%d")
+        except: return "000000"
+
+    def _fmt_name(name):
+        name = str(name).strip().replace(".", " ")
+        return re.sub(r' +', ' ', name).strip()
+
+    lines = []
     for _, row in df.iterrows():
-        try: amount_str = f"{float(row.get('Amount', '')):.2f}"
-        except: amount_str = str(row.get("Amount", ""))
-        lines.append("|".join([
-            str(row.get("Bank Code", "")).strip(),
-            str(row.get("Branch Code", "")).strip(),
-            str(row.get("Acc. No", "")).strip(),
-            amount_str,
-            str(row.get("Customer Name", "")).strip(),
-            str(row.get("RefNo", "")).strip(),
-        ]))
-    return "\n".join(lines).encode('utf-8')
+        acc       = acc_format_fn(_clean_acc(row.get("Acc. No", "")))
+        name      = _fmt_name(row.get("Customer Name", ""))
+        bank_code = _safe_code(row.get("Bank Code",   ""), 4)
+        branch    = _safe_code(row.get("Branch Code", ""), 3)
+        amount    = _fmt_amount(row.get("Amount", 0))
+        maturity  = _fmt_maturity(row.get("Maturity Date", None))
+
+        line = (
+            "0000"                  + 
+            bank_code               + 
+            branch                  + 
+            acc.zfill(12)           + 
+            name[:20].ljust(20)     + 
+            "23"                    + 
+            "000000000"             + 
+            amount                  + 
+            "slr"                   + 
+            "7010"                  + 
+            "660"                   + 
+            account_l_str.zfill(12) + 
+            "NSBFMC".ljust(20)      + 
+            "NSBFMC".ljust(15)      + 
+            "NSBFMC".ljust(15)      + 
+            maturity                + 
+            "000000"                  
+        )
+        lines.append(line)
+
+    return "\r\n".join(lines).encode('utf-8')
 
 # User Interface
 st.title("Payment List Processor")
@@ -199,23 +248,26 @@ if st.button("Run Process"):
             st.download_button("Download RTGS CSV", rtgs_df.to_csv(index=False).encode('utf-8'), "output_RTGS.csv", "text/csv")
 
             st.subheader("NSB Files")
-            col3, col4 = st.columns(2)
+            col3, col4, col5 = st.columns(3)
             with col3:
                 st.download_button("Download NSB CSV", nsb_df.to_csv(index=False).encode('utf-8'), "output_NSB.csv", "text/csv")
             with col4:
                 nsb_xls = generate_excel_bytes(nsb_df, NSB_ACCOUNT_L, is_nsb=True)
                 st.download_button("Download NSB Excel", nsb_xls, "output_NSB.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            with col5:
+                nsb_prn = generate_prn_bytes(nsb_df, "857", lambda acc: acc)
+                st.download_button("Download NSB PRN", nsb_prn, "output_NSB.prn", "text/plain")
 
             st.subheader("Other Banks Files")
-            col5, col6, col7 = st.columns(3)
-            with col5:
-                st.download_button("Download Other Banks CSV", other_banks_df.to_csv(index=False).encode('utf-8'), "output_OtherBanks.csv", "text/csv")
+            col6, col7, col8 = st.columns(3)
             with col6:
+                st.download_button("Download Other Banks CSV", other_banks_df.to_csv(index=False).encode('utf-8'), "output_OtherBanks.csv", "text/csv")
+            with col7:
                 other_xls = generate_excel_bytes(other_banks_df, OTHER_ACCOUNT_L, is_nsb=False)
                 st.download_button("Download Other Banks Excel", other_xls, "output_OtherBanks.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            with col7:
-                prn_bytes = generate_prn_bytes(other_banks_df)
-                st.download_button("Download Other Banks PRN", prn_bytes, "output_OtherBanks.prn", "text/plain")
+            with col8:
+                other_prn = generate_prn_bytes(other_banks_df, "100011378759", lambda acc: acc.zfill(12))
+                st.download_button("Download Other Banks PRN", other_prn, "output_OtherBanks.prn", "text/plain")
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
