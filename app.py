@@ -20,14 +20,14 @@ OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
 COL_WIDTHS_17 = {
     'A': 4.62, 'B': 4.62, 'C': 3.62, 'D': 12.62, 'E': 20.62,
-    'F': 2.62, 'G': 9.62, 'H': 12.62, 'I': 3.62, 'J': 4.62,
+    'F': 2.62, 'G': 12.62, 'H': 9.62, 'I': 3.62, 'J': 4.62,
     'K': 3.62, 'L': 12.62, 'M': 20.62, 'N': 15.62, 'O': 15.62,
     'P': 6.62, 'Q': 6.62
 }
 
 COL_FORMATS_17 = {
     'A': '0000', 'B': '0000', 'C': '000', 'D': '000000000000', 'E': 'General',
-    'F': '00', 'G': '000000000', 'H': '000000000000', 'I': 'General',
+    'F': '00', 'G': '000000000000', 'H': '000000000', 'I': 'General',
     'J': '0000', 'K': '000', 'L': '000000000000', 'M': 'General',
     'N': 'General', 'O': 'General', 'P': '000000', 'Q': '000000'
 }
@@ -231,7 +231,7 @@ def generate_prn_bytes(df, account_l_str, acc_format_fn):
 
     def _fmt_amount(amount_float):
         val = int(round(amount_float * 100))
-        return str(val).zfill(12)
+        return str(val).zfill(9)
 
     def _split_amounts(amount_float):
         chunks = []
@@ -263,7 +263,7 @@ def generate_prn_bytes(df, account_l_str, acc_format_fn):
             acc.zfill(12)             +
             name[:20].ljust(20)       +
             "23"                      +
-            "000000000"               +
+            "000000000000"            +
             _fmt_amount(amount_float) +
             "slr"                     +
             "7010"                    +
