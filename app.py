@@ -9,14 +9,12 @@ from openpyxl.styles import Font, Alignment, Border, Side
 
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 
-# Configuration and Constants
 BANK_NAME_MAP = {
     "People's Bank": "Peoples Bank",
     "Commercial Bank Of Ceylon PLC": "Commercial Bank PLC",
 }
 BANK_OF_CEYLON = "Bank of Ceylon"
 
-# Fetch secure account numbers from Streamlit Secrets
 NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
@@ -213,6 +211,8 @@ def generate_17col_excel_bytes(df, account_l):
     return buffer
 
 def generate_prn_bytes(df, account_l_str, acc_format_fn):
+    SPLIT_THRESHOLD = 5000000
+
     def _clean_acc(acc):
         acc = str(acc).strip().replace("-", "").replace(" ", "")
         if len(acc) == 15:
@@ -229,9 +229,18 @@ def generate_prn_bytes(df, account_l_str, acc_format_fn):
         except ValueError:
             return "0" * width
 
-    def _fmt_amount(amount):
-        try:    return str(int(round(float(amount) * 100))).zfill(12)
-        except: return "0" * 12
+    def _fmt_amount(amount_float):
+        val = int(round(amount_float * 100))
+        return str(val).zfill(12)
+
+    def _split_amounts(amount_float):
+        chunks = []
+        remaining = round(amount_float, 2)
+        while remaining > SPLIT_THRESHOLD:
+            chunks.append(float(SPLIT_THRESHOLD))
+            remaining = round(remaining - SPLIT_THRESHOLD, 2)
+        chunks.append(remaining)
+        return chunks
 
     def _fmt_maturity(mat):
         if pd.isna(mat): return "000000"
@@ -241,8 +250,32 @@ def generate_prn_bytes(df, account_l_str, acc_format_fn):
         except: return "000000"
 
     def _fmt_name(name):
-        name = str(name).strip().replace(".", " ")
-        return re.sub(r' +', ' ', name).strip()
+        name = str(name).strip()
+        name = re.sub(r'\.([^\s])', r' \1', name)
+        name = name.replace(".", "")
+        return name
+
+    def _build_line(acc, name, bank_code, branch, amount_float, maturity):
+        line = (
+            "0000"                    +
+            bank_code                 +
+            branch                    +
+            acc.zfill(12)             +
+            name[:20].ljust(20)       +
+            "23"                      +
+            "000000000"               +
+            _fmt_amount(amount_float) +
+            "slr"                     +
+            "7010"                    +
+            "660"                     +
+            account_l_str.zfill(12)   +
+            "NSBFMC".ljust(20)        +
+            "NSBFMC".ljust(15)        +
+            "NSBFMC".ljust(15)        +
+            maturity                  +
+            "000000"
+        )
+        return line
 
     lines = []
     for _, row in df.iterrows():
@@ -250,29 +283,12 @@ def generate_prn_bytes(df, account_l_str, acc_format_fn):
         name      = _fmt_name(row.get("Customer Name", ""))
         bank_code = _safe_code(row.get("Bank Code",   ""), 4)
         branch    = _safe_code(row.get("Branch Code", ""), 3)
-        amount    = _fmt_amount(row.get("Amount", 0))
         maturity  = _fmt_maturity(row.get("Maturity Date", None))
+        try:    raw_amount = float(row.get("Amount", 0))
+        except: raw_amount = 0.0
 
-        line = (
-            "0000"                  + 
-            bank_code               + 
-            branch                  + 
-            acc.zfill(12)           + 
-            name[:20].ljust(20)     + 
-            "23"                    + 
-            "000000000"             + 
-            amount                  + 
-            "slr"                   + 
-            "7010"                  + 
-            "660"                   + 
-            account_l_str.zfill(12) + 
-            "NSBFMC".ljust(20)      + 
-            "NSBFMC".ljust(15)      + 
-            "NSBFMC".ljust(15)      + 
-            maturity                + 
-            "000000"                  
-        )
-        lines.append(line)
+        for chunk in _split_amounts(raw_amount):
+            lines.append(_build_line(acc, name, bank_code, branch, chunk, maturity))
 
     return "\r\n".join(lines).encode('utf-8')
 
@@ -351,7 +367,7 @@ if st.button("Run Process"):
                 boc_xls = generate_17col_excel_bytes(boc_df, OTHER_ACCOUNT_L)
                 st.download_button("Download BOC Excel", boc_xls, "BOC.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             with col_boc3:
-                boc_prn = generate_prn_bytes(boc_df, str(st.secrets["OTHER_ACCOUNT"]), lambda acc: acc.zfill(12))
+                boc_prn = generate_prn_bytes(boc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download BOC PRN", boc_prn, "BOC.prn", "text/plain")
 
             st.subheader(f"Other Banks Files ({len(nonboc_df)} rows)")
@@ -362,7 +378,7 @@ if st.button("Run Process"):
                 nonboc_xls = generate_17col_excel_bytes(nonboc_df, OTHER_ACCOUNT_L)
                 st.download_button("Download NonBOC Excel", nonboc_xls, "NonBOC.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             with col_oth3:
-                nonboc_prn = generate_prn_bytes(nonboc_df, str(st.secrets["OTHER_ACCOUNT"]), lambda acc: acc.zfill(12))
+                nonboc_prn = generate_prn_bytes(nonboc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download NonBOC PRN", nonboc_prn, "NonBOC.prn", "text/plain")
 
         except Exception as e:
