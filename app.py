@@ -16,6 +16,7 @@ BANK_NAME_MAP = {
 }
 BANK_OF_CEYLON = "Bank of Ceylon"
 
+# Fetch secure account numbers from Streamlit Secrets
 NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
@@ -33,7 +34,6 @@ COL_FORMATS_17 = {
     'N': 'General', 'O': 'General', 'P': '000000', 'Q': '000000'
 }
 
-# Helper Functions
 def normalize_bank_name(name):
     if pd.isna(name): return name
     return BANK_NAME_MAP.get(str(name).strip(), str(name).strip())
@@ -59,7 +59,6 @@ def lookup_branch_code(branch_df, bank_name, branch_name):
         bm = bank_rows[bank_rows["Branch Name"].str.contains(branch_name, case=False, na=False)]
     return str(bm.iloc[0]["Branch Code"]) if not bm.empty else "BRANCH NOT FOUND"
 
-# Excel and PRN Generators
 def generate_rtgs_excel_bytes(df):
     wb = Workbook()
     ws = wb.active
@@ -277,7 +276,6 @@ def generate_prn_bytes(df, account_l_str, acc_format_fn):
 
     return "\r\n".join(lines).encode('utf-8')
 
-# User Interface
 st.title("Payment List Processor")
 st.write("Upload your required files below.")
 
@@ -291,7 +289,6 @@ if st.button("Run Process"):
     if payment_file is not None and directory_file is not None:
         st.write("Processing your files. Please wait.")
         try:
-            # 1. Load the bank directory
             branch_df = pd.read_excel(directory_file, sheet_name="Branch NEW", header=2)
             branch_df.columns = [
                 "Bank", "Bank Code", "Branch Code", "Branch Name",
@@ -303,20 +300,16 @@ if st.button("Run Process"):
             branch_df["Bank Code"] = branch_df["Bank Code"].astype(str).str.strip()
             branch_df["Branch Code"] = branch_df["Branch Code"].astype(str).str.strip()
 
-            # 2. Load the payment list
             pay_df = pd.read_excel(payment_file, header=1)
             pay_df.columns = pay_df.columns.str.strip()
             pay_df = pay_df.dropna(how="all").reset_index(drop=True)
 
-            # 3. Clean the payment list
             pay_df = pay_df[~pay_df.iloc[:, 0].astype(str).str.strip().str.startswith("Print Date")]
             work_df = pay_df[pay_df["Pay By"].astype(str).str.strip() != "Other"].copy()
 
-            # 4. Lookup Bank Codes and Branch Codes
             work_df["Bank Code"] = work_df.apply(lambda r: lookup_bank_code(branch_df, r["Bank Name"]), axis=1)
             work_df["Branch Code"] = work_df.apply(lambda r: lookup_branch_code(branch_df, r["Bank Name"], r["Branch Name"]), axis=1)
 
-            # 5. Split into four groups
             rtgs_mask = work_df["Pay By"].astype(str).str.strip().str.upper() == "RTGS"
             rtgs_df = work_df[rtgs_mask].copy()
             remaining_df = work_df[~rtgs_mask].copy()
@@ -331,7 +324,6 @@ if st.button("Run Process"):
 
             st.success("Processing complete. Download your files below.")
 
-            # 6. Create download buttons
             st.subheader(f"RTGS Files ({len(rtgs_df)} rows)")
             col_rtgs1, col_rtgs2 = st.columns(2)
             with col_rtgs1:
