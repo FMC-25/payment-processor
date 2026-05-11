@@ -6,6 +6,7 @@ import re
 import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
+from openpyxl.styles.named_styles import NamedStyle
 
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 
@@ -19,10 +20,10 @@ NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
 COL_WIDTHS_17 = {
-    'A': 4.82, 'B': 4.82, 'C': 3.82, 'D': 12.82, 'E': 20.82,
-    'F': 2.82, 'G': 12.82, 'H': 9.82, 'I': 3.82, 'J': 4.82,
-    'K': 3.82, 'L': 12.82, 'M': 20.82, 'N': 15.82, 'O': 15.82,
-    'P': 6.82, 'Q': 6.82
+    'A': 4.00, 'B': 4.00, 'C': 3.00, 'D': 12.00, 'E': 20.00,
+    'F': 2.00, 'G': 12.00, 'H': 9.00, 'I': 3.00, 'J': 4.00,
+    'K': 3.00, 'L': 12.00, 'M': 20.00, 'N': 15.00, 'O': 15.00,
+    'P': 6.00, 'Q': 6.00
 }
 
 COL_FORMATS_17 = {
@@ -170,6 +171,15 @@ def generate_17col_excel_bytes(df, account_l):
         return name
 
     wb = Workbook()
+
+    # Override the workbook's Normal style to Times New Roman 12pt
+    # This makes Excel calculate MDW using TNR 12pt on any machine,
+    # so the column width numbers (4, 12, 20...) are consistent everywhere
+    for ns in wb._named_styles:
+        if ns.name == 'Normal':
+            ns.font = Font(name="Times New Roman", size=12)
+            break
+
     ws = wb.active
 
     for letter, width in COL_WIDTHS_17.items():
