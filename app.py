@@ -4,7 +4,6 @@ import warnings
 import io
 import re
 import datetime
-import zipfile
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 
@@ -20,10 +19,10 @@ NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
 COL_WIDTHS_17 = {
-    'A': 4.00, 'B': 4.00, 'C': 3.00, 'D': 12.00, 'E': 20.00,
-    'F': 2.00, 'G': 12.00, 'H': 9.00, 'I': 3.00, 'J': 4.00,
-    'K': 3.00, 'L': 12.00, 'M': 20.00, 'N': 15.00, 'O': 15.00,
-    'P': 6.00, 'Q': 6.00
+    'A': 4.78, 'B': 4.78, 'C': 3.78, 'D': 12.78, 'E': 20.78,
+    'F': 2.78, 'G': 12.78, 'H': 9.78, 'I': 3.78, 'J': 4.78,
+    'K': 3.78, 'L': 12.78, 'M': 20.78, 'N': 15.78, 'O': 15.78,
+    'P': 6.78, 'Q': 6.78
 }
 
 COL_FORMATS_17 = {
@@ -208,28 +207,10 @@ def generate_17col_excel_bytes(df, account_l):
             cell.number_format = COL_FORMATS_17.get(cell.column_letter, "General")
             cell.font = tnr
 
-    # Save to a temp buffer first
-    tmp = io.BytesIO()
-    wb.save(tmp)
-
-    # Patch the base font in styles.xml to Times New Roman 12pt.
-    # This makes Excel use TNR 12pt as the MDW reference on ANY machine,
-    # so stored column widths (4, 12, 20...) display exactly as intended everywhere.
-    tmp.seek(0)
-    buf_out = io.BytesIO()
-    with zipfile.ZipFile(tmp, 'r') as zin, zipfile.ZipFile(buf_out, 'w', zipfile.ZIP_DEFLATED) as zout:
-        for item in zin.infolist():
-            data = zin.read(item.filename)
-            if item.filename == 'xl/styles.xml':
-                xml = data.decode('utf-8')
-                old_base = '<font><name val="Calibri"/><family val="2"/><color theme="1"/><sz val="11"/><scheme val="minor"/></font>'
-                new_base = '<font><name val="Times New Roman"/><family val="2"/><sz val="12"/></font>'
-                xml = xml.replace(old_base, new_base, 1)
-                data = xml.encode('utf-8')
-            zout.writestr(item, data)
-
-    buf_out.seek(0)
-    return buf_out
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 def generate_prn_bytes(df, account_l_str, acc_format_fn):
     SPLIT_THRESHOLD = 5000000
