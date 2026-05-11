@@ -19,10 +19,10 @@ NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
 COL_WIDTHS_17 = {
-    'A': 4.78, 'B': 4.78, 'C': 3.78, 'D': 12.78, 'E': 20.78,
-    'F': 2.78, 'G': 12.78, 'H': 9.78, 'I': 3.78, 'J': 4.78,
-    'K': 3.78, 'L': 12.78, 'M': 20.78, 'N': 15.78, 'O': 15.78,
-    'P': 6.78, 'Q': 6.78
+    'A': 4.00, 'B': 4.00, 'C': 3.00, 'D': 12.00, 'E': 20.00,
+    'F': 2.00, 'G': 12.00, 'H': 9.00, 'I': 3.00, 'J': 4.00,
+    'K': 3.00, 'L': 12.00, 'M': 20.00, 'N': 15.00, 'O': 15.00,
+    'P': 6.00, 'Q': 6.00
 }
 
 COL_FORMATS_17 = {
@@ -174,6 +174,10 @@ def generate_17col_excel_bytes(df, account_l):
     # keep_vba=True preserves the macro inside the file.
     wb = load_workbook("template.xlsm", keep_vba=True)
     ws = wb.active
+
+    # Set column widths in the file as well (macro will also correct on open)
+    for letter, width in COL_WIDTHS_17.items():
+        ws.column_dimensions[letter].width = width
 
     tnr = Font(name="Times New Roman", size=12)
 
