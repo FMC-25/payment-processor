@@ -4,9 +4,9 @@ import warnings
 import io
 import re
 import datetime
+import zipfile
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
-from openpyxl.styles.named_styles import NamedStyle
 
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 
@@ -171,13 +171,6 @@ def generate_17col_excel_bytes(df, account_l):
         return name
 
     wb = Workbook()
-
-    # Override the workbook's Normal style font to Times New Roman 12pt.
-    # This anchors Excel's MDW (Maximum Digit Width) calculation to TNR 12pt
-    # on every machine, so column width numbers display consistently everywhere.
-    normal_style = wb._named_styles[0]  # 'Normal' is always index 0
-    normal_style.font = Font(name="Times New Roman", size=12)
-
     ws = wb.active
 
     for letter, width in COL_WIDTHS_17.items():
@@ -215,10 +208,28 @@ def generate_17col_excel_bytes(df, account_l):
             cell.number_format = COL_FORMATS_17.get(cell.column_letter, "General")
             cell.font = tnr
 
-    buffer = io.BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-    return buffer
+    # Save to a temp buffer first
+    tmp = io.BytesIO()
+    wb.save(tmp)
+
+    # Patch the base font in styles.xml to Times New Roman 12pt.
+    # This makes Excel use TNR 12pt as the MDW reference on ANY machine,
+    # so stored column widths (4, 12, 20...) display exactly as intended everywhere.
+    tmp.seek(0)
+    buf_out = io.BytesIO()
+    with zipfile.ZipFile(tmp, 'r') as zin, zipfile.ZipFile(buf_out, 'w', zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == 'xl/styles.xml':
+                xml = data.decode('utf-8')
+                old_base = '<font><name val="Calibri"/><family val="2"/><color theme="1"/><sz val="11"/><scheme val="minor"/></font>'
+                new_base = '<font><name val="Times New Roman"/><family val="2"/><sz val="12"/></font>'
+                xml = xml.replace(old_base, new_base, 1)
+                data = xml.encode('utf-8')
+            zout.writestr(item, data)
+
+    buf_out.seek(0)
+    return buf_out
 
 def generate_prn_bytes(df, account_l_str, acc_format_fn):
     SPLIT_THRESHOLD = 5000000
