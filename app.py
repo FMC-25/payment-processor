@@ -25,10 +25,10 @@ OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 # Columns E, M, N, O use their given widths (20, 20, 15, 15) directly.
 # All other columns are measured from font file metrics — machine-independent.
 COL_WIDTHS_17 = {
-    'A': 5.29, 'B': 5.29, 'C': 4.14, 'D': 14.43, 'E': 20.00,
-    'F': 3.00, 'G': 14.43, 'H': 11.00, 'I': 3.14, 'J': 5.29,
-    'K': 4.14, 'L': 14.43, 'M': 20.00, 'N': 15.00, 'O': 15.00,
-    'P': 7.57, 'Q': 7.57
+    'A': 4.60, 'B': 4.60, 'C': 3.45, 'D': 13.74, 'E': 19.31,
+    'F': 2.31, 'G': 13.74, 'H': 10.31, 'I': 2.45, 'J': 4.60,
+    'K': 3.45, 'L': 13.74, 'M': 19.31, 'N': 14.31, 'O': 14.31,
+    'P': 6.88, 'Q': 6.88
 }
 
 # xlwt number format strings
