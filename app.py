@@ -214,19 +214,20 @@ def generate_17col_excel_bytes(df, account_l):
             cell.font = tnr
             cell.number_format = COL_FORMATS_17.get(cell.column_letter, "General")
 
-    # Set column widths:
-    # - Col E (index 4) is variable name → fixed 20 chars
-    # - All other cols → bestFit based on max content length on this machine
+    # Set column widths based on the formatted content length of each column.
+    # These are the exact character counts as displayed (matching PRN widths),
+    # multiplied by 1.1 to give comfortable room for TNR 12pt on any machine.
+    # col_max_len is measured from the actual formatted string length per column.
     for col_idx in range(17):
         col_letter = chr(65 + col_idx)
-        col_dim = ws.column_dimensions[col_letter]
-        if col_idx == 4:
-            # Name column — fixed 20 chars wide
-            col_dim.width = 20
+        fmt = COL_FORMATS_17.get(col_letter, 'General')
+        if fmt != 'General':
+            # Use format string length as the display width (e.g. '000000000000' = 12)
+            display_len = len(fmt)
         else:
-            # bestFit: let Excel size to content on this machine
-            col_dim.bestFit = True
-            col_dim.auto_size = True
+            # For General columns use the max actual content length seen
+            display_len = col_max_len[col_idx]
+        ws.column_dimensions[col_letter].width = display_len * 1.1
 
     buffer = io.BytesIO()
     wb.save(buffer)
