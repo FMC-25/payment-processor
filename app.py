@@ -18,11 +18,12 @@ BANK_OF_CEYLON = "Bank of Ceylon"
 NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
+# NEW — scaled for Times New Roman size 12
 COL_WIDTHS_17 = {
-    'A': 4.00, 'B': 4.00, 'C': 3.00, 'D': 12.00, 'E': 20.00,
-    'F': 2.00, 'G': 12.00, 'H': 9.00, 'I': 3.00, 'J': 4.00,
-    'K': 3.00, 'L': 12.00, 'M': 20.00, 'N': 15.00, 'O': 15.00,
-    'P': 6.00, 'Q': 6.00
+    'A': 4.86,  'B': 4.86,  'C': 3.79,  'D': 13.43, 'E': 22.00,
+    'F': 2.71,  'G': 13.43, 'H': 10.21, 'I': 3.79,  'J': 4.86,
+    'K': 3.79,  'L': 13.43, 'M': 22.00, 'N': 16.64, 'O': 16.64,
+    'P': 7.00,  'Q': 7.00
 }
 
 COL_FORMATS_17 = {
