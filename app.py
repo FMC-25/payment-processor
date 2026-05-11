@@ -172,18 +172,18 @@ def generate_17col_excel_bytes(df, account_l):
 
     wb = Workbook()
 
-    # Override the workbook's Normal style to Times New Roman 12pt
-    # This makes Excel calculate MDW using TNR 12pt on any machine,
-    # so the column width numbers (4, 12, 20...) are consistent everywhere
-    for ns in wb._named_styles:
-        if ns.name == 'Normal':
-            ns.font = Font(name="Times New Roman", size=12)
-            break
+    # Override the workbook's Normal style font to Times New Roman 12pt.
+    # This anchors Excel's MDW (Maximum Digit Width) calculation to TNR 12pt
+    # on every machine, so column width numbers display consistently everywhere.
+    normal_style = wb._named_styles[0]  # 'Normal' is always index 0
+    normal_style.font = Font(name="Times New Roman", size=12)
 
     ws = wb.active
 
     for letter, width in COL_WIDTHS_17.items():
-        ws.column_dimensions[letter].width = width
+        col_dim = ws.column_dimensions[letter]
+        col_dim.width = width
+        col_dim.customWidth = True
 
     for _, row in df.iterrows():
         acc_raw = clean_account_number(row.get("Acc. No", ""))
