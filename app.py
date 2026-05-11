@@ -199,7 +199,7 @@ def generate_17col_excel_bytes(df, account_l):
         ]
         ws.append(xls_row)
 
-    tnr = Font(name="Times New Roman", size=10)
+    tnr = Font(name="Times New Roman", size=12)
     for row_cells in ws.iter_rows():
         for cell in row_cells:
             cell.number_format = COL_FORMATS_17.get(cell.column_letter, "General")
