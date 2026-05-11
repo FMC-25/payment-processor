@@ -4,7 +4,6 @@ import warnings
 import io
 import re
 import datetime
-import xlwt
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 
@@ -174,30 +173,14 @@ def generate_17col_excel_bytes(df, account_l):
         name = name.replace(".", "")
         return name
 
-    wb  = xlwt.Workbook(encoding='utf-8')
-    ws  = wb.add_sheet('Sheet')
+    wb = Workbook()
+    ws = wb.active
+    tnr = Font(name="Times New Roman", size=12)
 
-    # Times New Roman size 12 font
-    font = xlwt.Font()
-    font.name      = 'Times New Roman'
-    font.height    = 240  # 12pt × 20 = 240 in xlwt units
+    # Write data rows first so we can track max content length per column
+    col_max_len = {i: 0 for i in range(17)}
 
-    # Build one style per column (font + number format)
-    col_styles = {}
-    for i, letter in enumerate('ABCDEFGHIJKLMNOPQ'):
-        fmt_str = COL_FORMATS_17.get(letter, 'General')
-        style = xlwt.XFStyle()
-        style.font = font
-        if fmt_str != 'General':
-            style.num_format_str = fmt_str
-        col_styles[i] = style
-
-    # Set column widths (xlwt units = 1/256 of char width, fixed offset in xls spec)
-    for i, letter in enumerate('ABCDEFGHIJKLMNOPQ'):
-        ws.col(i).width = COL_WIDTHS_17[letter]
-
-    # Write data rows
-    for row_idx, (_, row) in enumerate(df.iterrows()):
+    for _, row in df.iterrows():
         acc_raw = clean_account_number(row.get("Acc. No", ""))
         try:    acc_num = int(acc_raw)
         except: acc_num = 0
@@ -221,8 +204,29 @@ def generate_17col_excel_bytes(df, account_l):
             format_maturity_int(row.get("Maturity Date", None)),
             0,
         ]
+        ws.append(row_data)
         for col_idx, value in enumerate(row_data):
-            ws.write(row_idx, col_idx, value, col_styles[col_idx])
+            col_max_len[col_idx] = max(col_max_len[col_idx], len(str(value)))
+
+    # Apply font and number format to all cells
+    for row_cells in ws.iter_rows():
+        for cell in row_cells:
+            cell.font = tnr
+            cell.number_format = COL_FORMATS_17.get(cell.column_letter, "General")
+
+    # Set column widths:
+    # - Col E (index 4) is variable name → fixed 20 chars
+    # - All other cols → bestFit based on max content length on this machine
+    for col_idx in range(17):
+        col_letter = chr(65 + col_idx)
+        col_dim = ws.column_dimensions[col_letter]
+        if col_idx == 4:
+            # Name column — fixed 20 chars wide
+            col_dim.width = 20
+        else:
+            # bestFit: let Excel size to content on this machine
+            col_dim.bestFit = True
+            col_dim.auto_size = True
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -385,7 +389,7 @@ if st.button("Run Process"):
                 st.download_button("Download BOC CSV", boc_df.to_csv(index=False).encode('utf-8'), "BOC.csv", "text/csv")
             with col_boc2:
                 boc_xls = generate_17col_excel_bytes(boc_df, NSB_ACCOUNT_L)
-                st.download_button("Download BOC Excel", boc_xls, "BOC.xls", "application/vnd.ms-excel")
+                st.download_button("Download BOC Excel", boc_xls, "BOC.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             with col_boc3:
                 boc_prn = generate_prn_bytes(boc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download BOC PRN", boc_prn, "BOC.prn", "text/plain")
@@ -396,7 +400,7 @@ if st.button("Run Process"):
                 st.download_button("Download NonBOC CSV", nonboc_df.to_csv(index=False).encode('utf-8'), "NonBOC.csv", "text/csv")
             with col_oth2:
                 nonboc_xls = generate_17col_excel_bytes(nonboc_df, NSB_ACCOUNT_L)
-                st.download_button("Download NonBOC Excel", nonboc_xls, "NonBOC.xls", "application/vnd.ms-excel")
+                st.download_button("Download NonBOC Excel", nonboc_xls, "NonBOC.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             with col_oth3:
                 nonboc_prn = generate_prn_bytes(nonboc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download NonBOC PRN", nonboc_prn, "NonBOC.prn", "text/plain")
