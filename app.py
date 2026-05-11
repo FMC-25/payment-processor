@@ -4,7 +4,8 @@ import warnings
 import io
 import re
 import datetime
-from openpyxl import Workbook, load_workbook
+import xlwt
+from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
@@ -18,13 +19,17 @@ BANK_OF_CEYLON = "Bank of Ceylon"
 NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
+# xlwt column width units: (chars + 0.72) × 256
+# This gives a fixed offset of 0.62 on every machine (xls spec constant)
+# so stored value always displays exactly as intended
 COL_WIDTHS_17 = {
-    'A': 4.00, 'B': 4.00, 'C': 3.00, 'D': 12.00, 'E': 20.00,
-    'F': 2.00, 'G': 12.00, 'H': 9.00, 'I': 3.00, 'J': 4.00,
-    'K': 3.00, 'L': 12.00, 'M': 20.00, 'N': 15.00, 'O': 15.00,
-    'P': 6.00, 'Q': 6.00
+    'A': 1208,  'B': 1208,  'C':  952,  'D': 3252,  'E': 5308,
+    'F':  696,  'G': 3252,  'H': 2488,  'I':  952,  'J': 1208,
+    'K':  952,  'L': 3252,  'M': 5308,  'N': 4028,  'O': 4028,
+    'P': 1720,  'Q': 1720
 }
 
+# xlwt number format strings
 COL_FORMATS_17 = {
     'A': '0000', 'B': '0000', 'C': '000', 'D': '000000000000', 'E': 'General',
     'F': '00', 'G': '000000000000', 'H': '000000000', 'I': 'General',
@@ -169,24 +174,35 @@ def generate_17col_excel_bytes(df, account_l):
         name = name.replace(".", "")
         return name
 
-    # Load template.xlsm which has the VBA Workbook_Open macro
-    # that sets column widths correctly on any machine when opened.
-    # keep_vba=True preserves the macro inside the file.
-    wb = load_workbook("template.xlsm", keep_vba=True)
-    ws = wb.active
+    wb  = xlwt.Workbook(encoding='utf-8')
+    ws  = wb.add_sheet('Sheet')
 
-    # Set column widths in the file as well (macro will also correct on open)
-    for letter, width in COL_WIDTHS_17.items():
-        ws.column_dimensions[letter].width = width
+    # Times New Roman size 12 font
+    font = xlwt.Font()
+    font.name      = 'Times New Roman'
+    font.height    = 240  # 12pt × 20 = 240 in xlwt units
 
-    tnr = Font(name="Times New Roman", size=12)
+    # Build one style per column (font + number format)
+    col_styles = {}
+    for i, letter in enumerate('ABCDEFGHIJKLMNOPQ'):
+        fmt_str = COL_FORMATS_17.get(letter, 'General')
+        style = xlwt.XFStyle()
+        style.font = font
+        if fmt_str != 'General':
+            style.num_format_str = fmt_str
+        col_styles[i] = style
 
-    for _, row in df.iterrows():
+    # Set column widths (xlwt units = 1/256 of char width, fixed offset in xls spec)
+    for i, letter in enumerate('ABCDEFGHIJKLMNOPQ'):
+        ws.col(i).width = COL_WIDTHS_17[letter]
+
+    # Write data rows
+    for row_idx, (_, row) in enumerate(df.iterrows()):
         acc_raw = clean_account_number(row.get("Acc. No", ""))
         try:    acc_num = int(acc_raw)
         except: acc_num = 0
 
-        xls_row = [
+        row_data = [
             0,
             to_int_safe(row.get("Bank Code",   0)),
             to_int_safe(row.get("Branch Code", 0)),
@@ -198,24 +214,21 @@ def generate_17col_excel_bytes(df, account_l):
             "slr",
             7010,
             660,
-            account_l,
+            int(str(account_l).strip()),
             "NSBFMC",
             "NSBFMC",
             "NSBFMC",
             format_maturity_int(row.get("Maturity Date", None)),
             0,
         ]
-        ws.append(xls_row)
-
-    for row_cells in ws.iter_rows():
-        for cell in row_cells:
-            cell.number_format = COL_FORMATS_17.get(cell.column_letter, "General")
-            cell.font = tnr
+        for col_idx, value in enumerate(row_data):
+            ws.write(row_idx, col_idx, value, col_styles[col_idx])
 
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)
     return buffer
+
 
 def generate_prn_bytes(df, account_l_str, acc_format_fn):
     SPLIT_THRESHOLD = 5000000
@@ -372,7 +385,7 @@ if st.button("Run Process"):
                 st.download_button("Download BOC CSV", boc_df.to_csv(index=False).encode('utf-8'), "BOC.csv", "text/csv")
             with col_boc2:
                 boc_xls = generate_17col_excel_bytes(boc_df, NSB_ACCOUNT_L)
-                st.download_button("Download BOC Excel", boc_xls, "BOC.xlsm", "application/vnd.ms-excel.sheet.macroEnabled.12")
+                st.download_button("Download BOC Excel", boc_xls, "BOC.xls", "application/vnd.ms-excel")
             with col_boc3:
                 boc_prn = generate_prn_bytes(boc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download BOC PRN", boc_prn, "BOC.prn", "text/plain")
@@ -383,7 +396,7 @@ if st.button("Run Process"):
                 st.download_button("Download NonBOC CSV", nonboc_df.to_csv(index=False).encode('utf-8'), "NonBOC.csv", "text/csv")
             with col_oth2:
                 nonboc_xls = generate_17col_excel_bytes(nonboc_df, NSB_ACCOUNT_L)
-                st.download_button("Download NonBOC Excel", nonboc_xls, "NonBOC.xlsm", "application/vnd.ms-excel.sheet.macroEnabled.12")
+                st.download_button("Download NonBOC Excel", nonboc_xls, "NonBOC.xls", "application/vnd.ms-excel")
             with col_oth3:
                 nonboc_prn = generate_prn_bytes(nonboc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download NonBOC PRN", nonboc_prn, "NonBOC.prn", "text/plain")
