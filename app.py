@@ -19,7 +19,7 @@ warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 # value machine-independent at standard 96 DPI.
 #
 # Formula:  char_width = (target_pixels - 5_padding) / FIXED_MDW
-# Setting customWidth=True tells Excel to honour the stored value exactly.
+# openpyxl marks customWidth automatically when .width is assigned.
 
 _FIXED_MDW = 7      # px — Times New Roman 12pt at 96 DPI
 _PADDING   = 5      # px — Excel's internal cell padding
@@ -34,8 +34,8 @@ def _apply_pixel_widths(ws, col_pixel_map: dict):
     Widths are pinned to 96 DPI so they look identical on every machine.
     """
     for col, px in col_pixel_map.items():
-        ws.column_dimensions[col].width      = _px_to_char(px)
-        ws.column_dimensions[col].customWidth = True
+        ws.column_dimensions[col].width = _px_to_char(px)
+        # Note: openpyxl sets customWidth automatically when .width is assigned
 
 # ── Pixel targets for the 17-column BOC / NonBOC sheet ────────────────────
 # Derived from the original character widths:
