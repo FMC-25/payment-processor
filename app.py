@@ -181,9 +181,7 @@ def generate_17col_excel_bytes(df, account_l):
     ws = wb.active
 
     for letter, width in COL_WIDTHS_17.items():
-        col_dim = ws.column_dimensions[letter]
-        col_dim.width = width
-        col_dim.customWidth = True
+        ws.column_dimensions[letter].width = width
 
     for _, row in df.iterrows():
         acc_raw = clean_account_number(row.get("Acc. No", ""))
