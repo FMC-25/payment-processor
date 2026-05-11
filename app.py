@@ -18,7 +18,6 @@ BANK_OF_CEYLON = "Bank of Ceylon"
 NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
-# NEW — scaled for Times New Roman size 12
 COL_WIDTHS_17 = {
     'A': 4.86,  'B': 4.86,  'C': 3.79,  'D': 13.43, 'E': 22.00,
     'F': 2.71,  'G': 13.43, 'H': 10.21, 'I': 3.79,  'J': 4.86,
@@ -165,8 +164,10 @@ def generate_17col_excel_bytes(df, account_l):
         except: return 0
 
     def format_name(name):
-        name = str(name).strip().replace(".", " ")
-        return re.sub(r' +', ' ', name).strip()
+        name = str(name).strip()
+        name = re.sub(r'\.([^\s])', r' \1', name)
+        name = name.replace(".", "")
+        return name
 
     wb = Workbook()
     ws = wb.active
@@ -365,7 +366,7 @@ if st.button("Run Process"):
             with col_boc1:
                 st.download_button("Download BOC CSV", boc_df.to_csv(index=False).encode('utf-8'), "BOC.csv", "text/csv")
             with col_boc2:
-                boc_xls = generate_17col_excel_bytes(boc_df, OTHER_ACCOUNT_L)
+                boc_xls = generate_17col_excel_bytes(boc_df, NSB_ACCOUNT_L)
                 st.download_button("Download BOC Excel", boc_xls, "BOC.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             with col_boc3:
                 boc_prn = generate_prn_bytes(boc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
@@ -376,7 +377,7 @@ if st.button("Run Process"):
             with col_oth1:
                 st.download_button("Download NonBOC CSV", nonboc_df.to_csv(index=False).encode('utf-8'), "NonBOC.csv", "text/csv")
             with col_oth2:
-                nonboc_xls = generate_17col_excel_bytes(nonboc_df, OTHER_ACCOUNT_L)
+                nonboc_xls = generate_17col_excel_bytes(nonboc_df, NSB_ACCOUNT_L)
                 st.download_button("Download NonBOC Excel", nonboc_xls, "NonBOC.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             with col_oth3:
                 nonboc_prn = generate_prn_bytes(nonboc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
