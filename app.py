@@ -4,7 +4,7 @@ import warnings
 import io
 import re
 import datetime
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
@@ -169,17 +169,19 @@ def generate_17col_excel_bytes(df, account_l):
         name = name.replace(".", "")
         return name
 
-    wb = Workbook()
+    # Load template.xlsm which has the VBA Workbook_Open macro
+    # that sets column widths correctly on any machine when opened.
+    # keep_vba=True preserves the macro inside the file.
+    wb = load_workbook("template.xlsm", keep_vba=True)
     ws = wb.active
 
-    for letter, width in COL_WIDTHS_17.items():
-        ws.column_dimensions[letter].width = width
+    tnr = Font(name="Times New Roman", size=12)
 
     for _, row in df.iterrows():
         acc_raw = clean_account_number(row.get("Acc. No", ""))
         try:    acc_num = int(acc_raw)
         except: acc_num = 0
-        
+
         xls_row = [
             0,
             to_int_safe(row.get("Bank Code",   0)),
@@ -201,7 +203,6 @@ def generate_17col_excel_bytes(df, account_l):
         ]
         ws.append(xls_row)
 
-    tnr = Font(name="Times New Roman", size=12)
     for row_cells in ws.iter_rows():
         for cell in row_cells:
             cell.number_format = COL_FORMATS_17.get(cell.column_letter, "General")
@@ -367,7 +368,7 @@ if st.button("Run Process"):
                 st.download_button("Download BOC CSV", boc_df.to_csv(index=False).encode('utf-8'), "BOC.csv", "text/csv")
             with col_boc2:
                 boc_xls = generate_17col_excel_bytes(boc_df, NSB_ACCOUNT_L)
-                st.download_button("Download BOC Excel", boc_xls, "BOC.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                st.download_button("Download BOC Excel", boc_xls, "BOC.xlsm", "application/vnd.ms-excel.sheet.macroEnabled.12")
             with col_boc3:
                 boc_prn = generate_prn_bytes(boc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download BOC PRN", boc_prn, "BOC.prn", "text/plain")
@@ -378,7 +379,7 @@ if st.button("Run Process"):
                 st.download_button("Download NonBOC CSV", nonboc_df.to_csv(index=False).encode('utf-8'), "NonBOC.csv", "text/csv")
             with col_oth2:
                 nonboc_xls = generate_17col_excel_bytes(nonboc_df, NSB_ACCOUNT_L)
-                st.download_button("Download NonBOC Excel", nonboc_xls, "NonBOC.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                st.download_button("Download NonBOC Excel", nonboc_xls, "NonBOC.xlsm", "application/vnd.ms-excel.sheet.macroEnabled.12")
             with col_oth3:
                 nonboc_prn = generate_prn_bytes(nonboc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download NonBOC PRN", nonboc_prn, "NonBOC.prn", "text/plain")
