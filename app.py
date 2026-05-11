@@ -19,16 +19,15 @@ BANK_OF_CEYLON = "Bank of Ceylon"
 NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
-# Column widths computed from pixel width of Times New Roman 12pt characters
-# for the exact character count each column contains.
-# Formula: stored = (text_px + 5px_padding) / 7.0px (Calibri 11pt MDW)
-# Columns E, M, N, O use their given widths (20, 20, 15, 15) directly.
-# All other columns are measured from font file metrics — machine-independent.
+# Column widths: target display value + 0.74 offset (calibrated from this machine).
+# Base font patched to TNR 12pt in XML so MDW is consistent across machines.
+# Target display: A=4, B=4, C=3, D=12, E=20, F=2, G=12, H=12, I=3, J=4,
+#                 K=3, L=12, M=20, N=15, O=15, P=6, Q=6
 COL_WIDTHS_17 = {
-    'A': 4.60, 'B': 4.60, 'C': 3.45, 'D': 13.74, 'E': 19.31,
-    'F': 2.31, 'G': 13.74, 'H': 13.74, 'I': 2.45, 'J': 4.60,
-    'K': 3.45, 'L': 13.74, 'M': 19.31, 'N': 14.31, 'O': 14.31,
-    'P': 6.88, 'Q': 6.88
+    'A': 4.74, 'B': 4.74, 'C': 3.74, 'D': 12.74, 'E': 20.74,
+    'F': 2.74, 'G': 12.74, 'H': 12.74, 'I': 3.74, 'J': 4.74,
+    'K': 3.74, 'L': 12.74, 'M': 20.74, 'N': 15.74, 'O': 15.74,
+    'P': 6.74, 'Q': 6.74
 }
 
 # xlwt number format strings
