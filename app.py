@@ -18,14 +18,15 @@ BANK_OF_CEYLON = "Bank of Ceylon"
 NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
-# xlwt column width units: (chars + 0.72) × 256
-# This gives a fixed offset of 0.62 on every machine (xls spec constant)
-# so stored value always displays exactly as intended
+# Column widths computed from actual pixel widths of content
+# using Liberation Serif (metric-compatible with Times New Roman) at 12pt, 96 DPI.
+# Formula: stored = (content_px + 5_padding) / MDW_calibri_11pt(7.0px)
+# These values are machine-independent as they are based on absolute pixel measurements.
 COL_WIDTHS_17 = {
-    'A': 1208,  'B': 1208,  'C':  952,  'D': 3252,  'E': 5308,
-    'F':  696,  'G': 3252,  'H': 2488,  'I':  952,  'J': 1208,
-    'K':  952,  'L': 3252,  'M': 5308,  'N': 4028,  'O': 4028,
-    'P': 1720,  'Q': 1720
+    'A': 5.29, 'B': 5.29, 'C': 4.14, 'D': 14.43, 'E': 21.57,
+    'F': 3.00, 'G': 14.43, 'H': 11.00, 'I': 3.14, 'J': 5.29,
+    'K': 4.14, 'L': 14.29, 'M': 10.00, 'N': 10.00, 'O': 10.00,
+    'P': 7.57, 'Q': 7.57
 }
 
 # xlwt number format strings
@@ -177,9 +178,6 @@ def generate_17col_excel_bytes(df, account_l):
     ws = wb.active
     tnr = Font(name="Times New Roman", size=12)
 
-    # Write data rows first so we can track max content length per column
-    col_max_len = {i: 0 for i in range(17)}
-
     for _, row in df.iterrows():
         acc_raw = clean_account_number(row.get("Acc. No", ""))
         try:    acc_num = int(acc_raw)
@@ -205,8 +203,6 @@ def generate_17col_excel_bytes(df, account_l):
             0,
         ]
         ws.append(row_data)
-        for col_idx, value in enumerate(row_data):
-            col_max_len[col_idx] = max(col_max_len[col_idx], len(str(value)))
 
     # Apply font and number format to all cells
     for row_cells in ws.iter_rows():
@@ -214,20 +210,11 @@ def generate_17col_excel_bytes(df, account_l):
             cell.font = tnr
             cell.number_format = COL_FORMATS_17.get(cell.column_letter, "General")
 
-    # Set column widths based on the formatted content length of each column.
-    # These are the exact character counts as displayed (matching PRN widths),
-    # multiplied by 1.1 to give comfortable room for TNR 12pt on any machine.
-    # col_max_len is measured from the actual formatted string length per column.
-    for col_idx in range(17):
-        col_letter = chr(65 + col_idx)
-        fmt = COL_FORMATS_17.get(col_letter, 'General')
-        if fmt != 'General':
-            # Use format string length as the display width (e.g. '000000000000' = 12)
-            display_len = len(fmt)
-        else:
-            # For General columns use the max actual content length seen
-            display_len = col_max_len[col_idx]
-        ws.column_dimensions[col_letter].width = display_len * 1.1
+    # Set column widths from COL_WIDTHS_17 — computed from actual pixel widths
+    # of the content using Times New Roman 12pt at 96 DPI.
+    # These are machine-independent absolute measurements.
+    for col_letter, width in COL_WIDTHS_17.items():
+        ws.column_dimensions[col_letter].width = width
 
     buffer = io.BytesIO()
     wb.save(buffer)
