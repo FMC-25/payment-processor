@@ -26,7 +26,7 @@ OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 # All other columns are measured from font file metrics — machine-independent.
 COL_WIDTHS_17 = {
     'A': 4.60, 'B': 4.60, 'C': 3.45, 'D': 13.74, 'E': 19.31,
-    'F': 2.31, 'G': 13.74, 'H': 10.31, 'I': 2.45, 'J': 4.60,
+    'F': 2.31, 'G': 13.74, 'H': 13.74, 'I': 2.45, 'J': 4.60,
     'K': 3.45, 'L': 13.74, 'M': 19.31, 'N': 14.31, 'O': 14.31,
     'P': 6.88, 'Q': 6.88
 }
@@ -34,7 +34,7 @@ COL_WIDTHS_17 = {
 # xlwt number format strings
 COL_FORMATS_17 = {
     'A': '0000', 'B': '0000', 'C': '000', 'D': '000000000000', 'E': 'General',
-    'F': '00', 'G': '000000000000', 'H': '000000000', 'I': 'General',
+    'F': '00', 'G': '000000000000', 'H': '000000000000', 'I': 'General',
     'J': '0000', 'K': '000', 'L': '000000000000', 'M': 'General',
     'N': 'General', 'O': 'General', 'P': '000000', 'Q': '000000'
 }
