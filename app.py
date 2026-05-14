@@ -407,6 +407,17 @@ if st.button("Run Process"):
             boc_df = after_nsb_df[boc_mask].copy()
             nonboc_df = after_nsb_df[~boc_mask].copy()
 
+            # Check for lookup failures across all non-RTGS rows
+            failure_mask = (
+                work_df["Bank Code"].astype(str).str.contains("NOT FOUND", na=False) |
+                work_df["Branch Code"].astype(str).str.contains("NOT FOUND", na=False)
+            )
+            failed_df = work_df[failure_mask][["Customer Name", "Bank Name", "Branch Name", "Bank Code", "Branch Code"]]
+
+            if not failed_df.empty:
+                st.warning(f"⚠️ {len(failed_df)} row(s) had lookup failures. These rows will have 0000/000 in Bank/Branch Code fields in all output files. Please fix the Bank Directory or Payment List before using the outputs.")
+                st.dataframe(failed_df.reset_index(drop=True), use_container_width=True)
+
             st.success("Processing complete. Download your files below.")
 
             st.subheader(f"RTGS Files ({len(rtgs_df)} rows)")
