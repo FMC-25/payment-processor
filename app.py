@@ -5,6 +5,7 @@ import io
 import re
 import datetime
 import zipfile
+import xlwt
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 
@@ -23,7 +24,7 @@ OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 # Base font patched to TNR 12pt in XML so MDW is consistent across machines.
 COL_WIDTHS_17 = {
     'A': 4.74, 'B': 4.74, 'C': 3.74, 'D': 12.74, 'E': 20.74,
-    'F': 2.74, 'G': 9.74, 'H': 12.74, 'I': 3.74, 'J': 4.74,
+    'F': 2.74, 'G': 12.74, 'H': 12.74, 'I': 3.74, 'J': 4.74,
     'K': 3.74, 'L': 12.74, 'M': 20.74, 'N': 15.74, 'O': 15.74,
     'P': 6.74, 'Q': 6.74
 }
@@ -157,11 +158,22 @@ def generate_nsb_excel_bytes(df):
     buffer.seek(0)
     return buffer
 
-def generate_17col_excel_bytes(df, account_l):
+def _make_xls_style(fmt_str):
+    """Create an xlwt style with Times New Roman 12pt and the given number format."""
+    style = xlwt.XFStyle()
+    font = xlwt.Font()
+    font.name = "Times New Roman"
+    font.height = 240  # 12pt = 12 * 20 twips
+    style.font = font
+    if fmt_str and fmt_str != "General":
+        style.num_format_str = fmt_str
+    return style
+
+def generate_17col_xls_bytes(df):
     """
-    Generate 17-column Excel for BOC / NonBOC.
-    - Col G (index 6): value = 0, format '000000000' (9 zeros)
-    - Col L (index 11): value = 857, format '000000000000' (12 zeros)
+    Generate 17-column XLS (Excel 97-2003) for BOC / NonBOC.
+    - Col G: value = 0, format 000000000 (9 zeros)
+    - Col L: value = 857, format 000000000000 (12 zeros) => displays 000000000857
     - Amounts > 5,000,000 are split into multiple rows (same as PRN).
     """
     def clean_account_number(acc):
@@ -188,13 +200,19 @@ def generate_17col_excel_bytes(df, account_l):
     def format_name(name):
         name = str(name).strip()
         name = re.sub(r'\.([^\s])', r' \1', name)
-        name = name.replace(".", "")
-        return name
+        return name.replace(".", "")
 
-    wb = Workbook()
-    ws = wb.active
-    tnr = Font(name="Times New Roman", size=12)
+    col_letters = list("ABCDEFGHIJKLMNOPQ")
+    styles = {c: _make_xls_style(COL_FORMATS_17.get(c, "General")) for c in col_letters}
 
+    wb = xlwt.Workbook()
+    ws = wb.add_sheet("Sheet")
+
+    # Set column widths (xlwt unit = 1/256 of character width)
+    for i, c in enumerate(col_letters):
+        ws.col(i).width = int(COL_WIDTHS_17[c] * 256)
+
+    row_idx = 0
     for _, row in df.iterrows():
         acc_raw = clean_account_number(row.get("Acc. No", ""))
         try:    acc_num = int(acc_raw)
@@ -205,61 +223,34 @@ def generate_17col_excel_bytes(df, account_l):
 
         maturity_val = format_maturity_int(row.get("Maturity Date", None))
 
-        # Split amounts > 5,000,000 into separate rows
         for chunk in _split_amounts(raw_amount):
             row_data = [
-                0,                                      # A
-                to_int_safe(row.get("Bank Code",   0)), # B
-                to_int_safe(row.get("Branch Code", 0)), # C
-                acc_num,                                # D
-                format_name(row.get("Customer Name", "")),  # E
-                23,                                     # F
-                0,                                      # G — 9-zero format, value 0
-                format_amount_int(chunk),               # H — chunk amount
-                "slr",                                  # I
-                7010,                                   # J
-                660,                                    # K
-                857,                                    # L — fixed as 857 (000000000857)
-                "NSBFMC",                               # M
-                "NSBFMC",                               # N
-                "NSBFMC",                               # O
-                maturity_val,                           # P
-                0,                                      # Q
+                0,                                          # A
+                to_int_safe(row.get("Bank Code",   0)),     # B
+                to_int_safe(row.get("Branch Code", 0)),     # C
+                acc_num,                                    # D
+                format_name(row.get("Customer Name", "")), # E
+                23,                                         # F
+                0,                                          # G — 000000000
+                format_amount_int(chunk),                   # H — amount × 100
+                "slr",                                      # I
+                7010,                                       # J
+                660,                                        # K
+                857,                                        # L — 000000000857
+                "NSBFMC",                                   # M
+                "NSBFMC",                                   # N
+                "NSBFMC",                                   # O
+                maturity_val,                               # P
+                0,                                          # Q
             ]
-            ws.append(row_data)
+            for col_idx, (val, c) in enumerate(zip(row_data, col_letters)):
+                ws.write(row_idx, col_idx, val, styles[c])
+            row_idx += 1
 
-    # Apply font and number format
-    for row_cells in ws.iter_rows():
-        for cell in row_cells:
-            cell.font = tnr
-            cell.number_format = COL_FORMATS_17.get(cell.column_letter, "General")
-
-    # Set column widths
-    for col_letter, width in COL_WIDTHS_17.items():
-        ws.column_dimensions[col_letter].width = width
-
-    # Patch styles.xml to set TNR 12pt as base font for consistent MDW
-    tmp = io.BytesIO()
-    wb.save(tmp)
-    tmp.seek(0)
-
-    buf_out = io.BytesIO()
-    with zipfile.ZipFile(tmp, 'r') as zin, \
-         zipfile.ZipFile(buf_out, 'w', zipfile.ZIP_DEFLATED) as zout:
-        for item in zin.infolist():
-            data = zin.read(item.filename)
-            if item.filename == 'xl/styles.xml':
-                xml = data.decode('utf-8')
-                xml = re.sub(
-                    r'<font>.*?</font>',
-                    '<font><sz val="12"/><name val="Times New Roman"/></font>',
-                    xml, count=1, flags=re.DOTALL
-                )
-                data = xml.encode('utf-8')
-            zout.writestr(item, data)
-
-    buf_out.seek(0)
-    return buf_out
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
 
 
 def generate_prn_bytes(df, account_l_str, acc_format_fn):
@@ -405,8 +396,8 @@ if st.button("Run Process"):
             with col_boc1:
                 st.download_button("Download BOC CSV", boc_df.to_csv(index=False).encode('utf-8'), "BOC.csv", "text/csv")
             with col_boc2:
-                boc_xls = generate_17col_excel_bytes(boc_df, OTHER_ACCOUNT_L)
-                st.download_button("Download BOC Excel", boc_xls, "BOC.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                boc_xls = generate_17col_xls_bytes(boc_df)
+                st.download_button("Download BOC XLS", boc_xls, "BOC.xls", "application/vnd.ms-excel")
             with col_boc3:
                 boc_prn = generate_prn_bytes(boc_df, str(st.secrets["OTHER_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download BOC PRN", boc_prn, "BOC.prn", "text/plain")
@@ -416,8 +407,8 @@ if st.button("Run Process"):
             with col_oth1:
                 st.download_button("Download NonBOC CSV", nonboc_df.to_csv(index=False).encode('utf-8'), "NonBOC.csv", "text/csv")
             with col_oth2:
-                nonboc_xls = generate_17col_excel_bytes(nonboc_df, OTHER_ACCOUNT_L)
-                st.download_button("Download NonBOC Excel", nonboc_xls, "NonBOC.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                nonboc_xls = generate_17col_xls_bytes(nonboc_df)
+                st.download_button("Download NonBOC XLS", nonboc_xls, "NonBOC.xls", "application/vnd.ms-excel")
             with col_oth3:
                 nonboc_prn = generate_prn_bytes(nonboc_df, str(st.secrets["OTHER_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download NonBOC PRN", nonboc_prn, "NonBOC.prn", "text/plain")
