@@ -20,13 +20,14 @@ BANK_OF_CEYLON = "Bank of Ceylon"
 NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
-# Column widths: target display value + 0.74 offset (calibrated from this machine).
-# Base font patched to TNR 12pt in XML so MDW is consistent across machines.
+# Exact xlwt width units read directly from the reference file
+# Customer_PaymentsSlips_24042026_BOC.xls using xlrd with formatting_info=True.
+# These are raw 1/256-char units as stored in the BIFF record — no font math needed.
 COL_WIDTHS_17 = {
-    'A': 4.74, 'B': 4.74, 'C': 3.74, 'D': 12.74, 'E': 20.74,
-    'F': 2.74, 'G': 9.74, 'H': 12.74, 'I': 3.74, 'J': 4.74,
-    'K': 3.74, 'L': 12.74, 'M': 20.74, 'N': 15.74, 'O': 15.74,
-    'P': 6.74, 'Q': 6.74
+    'A': 1184, 'B': 1184, 'C': 928,  'D': 3232, 'E': 5280,
+    'F': 672,  'G': 2464, 'H': 3232, 'I': 928,  'J': 1184,
+    'K': 928,  'L': 3232, 'M': 5280, 'N': 4000, 'O': 4000,
+    'P': 1696, 'Q': 1696
 }
 
 # Col G format changed to 9 zeros (000000000) — value is always 0
@@ -169,6 +170,27 @@ def _make_xls_style(fmt_str):
         style.num_format_str = fmt_str
     return style
 
+def _patch_xls_base_font(xls_bytes, new_height=240):
+    """
+    Patch all default Arial 10pt (height=200) FONT records in the BIFF8/OLE stream
+    to 12pt (height=240) in-place, without changing file size or breaking the OLE
+    container. Excel uses font index 0 as the MDW (Max Digit Width) reference for
+    column width calculations, so this makes xlwt column widths consistent with
+    the TNR 12pt base used in the PRN fixed-width character positions.
+    """
+    import struct as _struct
+    FONT_TYPE = 0x0031
+    raw = bytearray(xls_bytes)
+    pos = 0
+    while pos < len(raw) - 4:
+        rec_type = _struct.unpack_from("<H", raw, pos)[0]
+        rec_len  = _struct.unpack_from("<H", raw, pos + 2)[0]
+        if rec_type == FONT_TYPE and 10 < rec_len < 500:
+            if _struct.unpack_from("<H", raw, pos + 4)[0] == 200:  # Arial 10pt default
+                _struct.pack_into("<H", raw, pos + 4, new_height)
+        pos += 1
+    return bytes(raw)
+
 def generate_17col_xls_bytes(df):
     """
     Generate 17-column XLS (Excel 97-2003) for BOC / NonBOC.
@@ -206,11 +228,24 @@ def generate_17col_xls_bytes(df):
     styles = {c: _make_xls_style(COL_FORMATS_17.get(c, "General")) for c in col_letters}
 
     wb = xlwt.Workbook()
+
+    # Set Font 0 (workbook default font) to Times New Roman 12pt.
+    # Excel uses Font 0 to calculate MDW (Maximum Digit Width), which is the
+    # reference unit for column widths. The reference file
+    # Customer_PaymentsSlips_24042026_BOC.xls has Font 0 = TNR 12pt.
+    # xlwt pre-registers Arial fonts at indices 0-3 before any user code runs.
+    # We must mutate those objects directly — setting default_style after the
+    # fact does not affect the already-registered font records.
+    for font_obj, idx in wb._Workbook__styles._font_id2x.items():
+        if idx in (0, 1, 2, 3):
+            font_obj.name = "Times New Roman"
+            font_obj.height = 240  # 12pt = 12 × 20 twips
+
     ws = wb.add_sheet("Sheet")
 
     # Set column widths (xlwt unit = 1/256 of character width)
     for i, c in enumerate(col_letters):
-        ws.col(i).width = int(COL_WIDTHS_17[c] * 256)
+        ws.col(i).width = COL_WIDTHS_17[c]
 
     row_idx = 0
     for _, row in df.iterrows():
@@ -249,8 +284,9 @@ def generate_17col_xls_bytes(df):
 
     buf = io.BytesIO()
     wb.save(buf)
-    buf.seek(0)
-    return buf
+    # Patch base font from Arial 10pt -> 12pt so column widths match PRN character positions
+    patched = _patch_xls_base_font(buf.getvalue(), new_height=240)
+    return io.BytesIO(patched)
 
 
 def generate_prn_bytes(df, account_l_str, acc_format_fn):
