@@ -21,8 +21,6 @@ OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
 # Column widths: target display value + 0.74 offset (calibrated from this machine).
 # Base font patched to TNR 12pt in XML so MDW is consistent across machines.
-# Target display: A=4, B=4, C=3, D=12, E=20, F=2, G=12, H=12, I=3, J=4,
-#                 K=3, L=12, M=20, N=15, O=15, P=6, Q=6
 COL_WIDTHS_17 = {
     'A': 4.74, 'B': 4.74, 'C': 3.74, 'D': 12.74, 'E': 20.74,
     'F': 2.74, 'G': 12.74, 'H': 12.74, 'I': 3.74, 'J': 4.74,
@@ -30,13 +28,16 @@ COL_WIDTHS_17 = {
     'P': 6.74, 'Q': 6.74
 }
 
-# xlwt number format strings
+# Col G format changed to 9 zeros (000000000) — value is always 0
+# Col L format stays 000000000000 (12 digits) — value is 857
 COL_FORMATS_17 = {
     'A': '0000', 'B': '0000', 'C': '000', 'D': '000000000000', 'E': 'General',
-    'F': '00', 'G': '000000000000', 'H': '000000000000', 'I': 'General',
+    'F': '00', 'G': '000000000', 'H': '000000000000', 'I': 'General',
     'J': '0000', 'K': '000', 'L': '000000000000', 'M': 'General',
     'N': 'General', 'O': 'General', 'P': '000000', 'Q': '000000'
 }
+
+SPLIT_THRESHOLD = 5_000_000
 
 def normalize_bank_name(name):
     if pd.isna(name): return name
@@ -63,6 +64,16 @@ def lookup_branch_code(branch_df, bank_name, branch_name):
         bm = bank_rows[bank_rows["Branch Name"].str.contains(branch_name, case=False, na=False)]
     return str(bm.iloc[0]["Branch Code"]) if not bm.empty else "BRANCH NOT FOUND"
 
+def _split_amounts(amount_float):
+    """Split amount into chunks of <= SPLIT_THRESHOLD."""
+    chunks = []
+    remaining = round(amount_float, 2)
+    while remaining > SPLIT_THRESHOLD:
+        chunks.append(float(SPLIT_THRESHOLD))
+        remaining = round(remaining - SPLIT_THRESHOLD, 2)
+    chunks.append(remaining)
+    return chunks
+
 def generate_rtgs_excel_bytes(df):
     wb = Workbook()
     ws = wb.active
@@ -76,7 +87,6 @@ def generate_rtgs_excel_bytes(df):
             cell.font = hdr_font
     else:
         ws.append(["No RTGS rows in this payment list."])
-    
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)
@@ -148,6 +158,12 @@ def generate_nsb_excel_bytes(df):
     return buffer
 
 def generate_17col_excel_bytes(df, account_l):
+    """
+    Generate 17-column Excel for BOC / NonBOC.
+    - Col G (index 6): value = 0, format '000000000' (9 zeros)
+    - Col L (index 11): value = 857, format '000000000000' (12 zeros)
+    - Amounts > 5,000,000 are split into multiple rows (same as PRN).
+    """
     def clean_account_number(acc):
         acc = str(acc).strip().replace("-", "").replace(" ", "")
         if len(acc) == 15:   acc = acc[3:]
@@ -184,40 +200,45 @@ def generate_17col_excel_bytes(df, account_l):
         try:    acc_num = int(acc_raw)
         except: acc_num = 0
 
-        row_data = [
-            0,
-            to_int_safe(row.get("Bank Code",   0)),
-            to_int_safe(row.get("Branch Code", 0)),
-            acc_num,
-            format_name(row.get("Customer Name", "")),
-            23,
-            0,
-            format_amount_int(row.get("Amount", 0)),
-            "slr",
-            7010,
-            660,
-            int(str(account_l).strip()),
-            "NSBFMC",
-            "NSBFMC",
-            "NSBFMC",
-            format_maturity_int(row.get("Maturity Date", None)),
-            0,
-        ]
-        ws.append(row_data)
+        try:    raw_amount = float(row.get("Amount", 0))
+        except: raw_amount = 0.0
 
-    # Apply font and number format to all cells
+        maturity_val = format_maturity_int(row.get("Maturity Date", None))
+
+        # Split amounts > 5,000,000 into separate rows
+        for chunk in _split_amounts(raw_amount):
+            row_data = [
+                0,                                      # A
+                to_int_safe(row.get("Bank Code",   0)), # B
+                to_int_safe(row.get("Branch Code", 0)), # C
+                acc_num,                                # D
+                format_name(row.get("Customer Name", "")),  # E
+                23,                                     # F
+                0,                                      # G — 9-zero format, value 0
+                format_amount_int(chunk),               # H — chunk amount
+                "slr",                                  # I
+                7010,                                   # J
+                660,                                    # K
+                857,                                    # L — fixed as 857 (000000000857)
+                "NSBFMC",                               # M
+                "NSBFMC",                               # N
+                "NSBFMC",                               # O
+                maturity_val,                           # P
+                0,                                      # Q
+            ]
+            ws.append(row_data)
+
+    # Apply font and number format
     for row_cells in ws.iter_rows():
         for cell in row_cells:
             cell.font = tnr
             cell.number_format = COL_FORMATS_17.get(cell.column_letter, "General")
 
-    # Set column widths from COL_WIDTHS_17
+    # Set column widths
     for col_letter, width in COL_WIDTHS_17.items():
         ws.column_dimensions[col_letter].width = width
 
-    # Save to temp buffer, then patch styles.xml to set TNR 12pt as the base font.
-    # This overrides the default Calibri 11pt MDW with TNR 12pt MDW so that
-    # column widths display consistently regardless of user's default font setting.
+    # Patch styles.xml to set TNR 12pt as base font for consistent MDW
     tmp = io.BytesIO()
     wb.save(tmp)
     tmp.seek(0)
@@ -229,12 +250,10 @@ def generate_17col_excel_bytes(df, account_l):
             data = zin.read(item.filename)
             if item.filename == 'xl/styles.xml':
                 xml = data.decode('utf-8')
-                # Replace first <font> tag (base font used for MDW) with TNR 12pt
-                import re as _re
-                xml = _re.sub(
+                xml = re.sub(
                     r'<font>.*?</font>',
                     '<font><sz val="12"/><name val="Times New Roman"/></font>',
-                    xml, count=1, flags=_re.DOTALL
+                    xml, count=1, flags=re.DOTALL
                 )
                 data = xml.encode('utf-8')
             zout.writestr(item, data)
@@ -244,8 +263,6 @@ def generate_17col_excel_bytes(df, account_l):
 
 
 def generate_prn_bytes(df, account_l_str, acc_format_fn):
-    SPLIT_THRESHOLD = 5000000
-
     def _clean_acc(acc):
         acc = str(acc).strip().replace("-", "").replace(" ", "")
         if len(acc) == 15:
@@ -265,15 +282,6 @@ def generate_prn_bytes(df, account_l_str, acc_format_fn):
     def _fmt_amount(amount_float):
         val = int(round(amount_float * 100))
         return str(val).zfill(9)
-
-    def _split_amounts(amount_float):
-        chunks = []
-        remaining = round(amount_float, 2)
-        while remaining > SPLIT_THRESHOLD:
-            chunks.append(float(SPLIT_THRESHOLD))
-            remaining = round(remaining - SPLIT_THRESHOLD, 2)
-        chunks.append(remaining)
-        return chunks
 
     def _fmt_maturity(mat):
         if pd.isna(mat): return "000000"
@@ -325,6 +333,7 @@ def generate_prn_bytes(df, account_l_str, acc_format_fn):
 
     return "\r\n".join(lines).encode('utf-8')
 
+
 st.title("Payment List Processor")
 st.write("Upload your required files below.")
 
@@ -352,7 +361,6 @@ if st.button("Run Process"):
             pay_df = pd.read_excel(payment_file, header=1)
             pay_df.columns = pay_df.columns.str.strip()
             pay_df = pay_df.dropna(how="all").reset_index(drop=True)
-
             pay_df = pay_df[~pay_df.iloc[:, 0].astype(str).str.strip().str.startswith("Print Date")]
             work_df = pay_df[pay_df["Pay By"].astype(str).str.strip() != "Other"].copy()
 
@@ -397,10 +405,10 @@ if st.button("Run Process"):
             with col_boc1:
                 st.download_button("Download BOC CSV", boc_df.to_csv(index=False).encode('utf-8'), "BOC.csv", "text/csv")
             with col_boc2:
-                boc_xls = generate_17col_excel_bytes(boc_df, NSB_ACCOUNT_L)
+                boc_xls = generate_17col_excel_bytes(boc_df, OTHER_ACCOUNT_L)
                 st.download_button("Download BOC Excel", boc_xls, "BOC.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             with col_boc3:
-                boc_prn = generate_prn_bytes(boc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
+                boc_prn = generate_prn_bytes(boc_df, str(st.secrets["OTHER_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download BOC PRN", boc_prn, "BOC.prn", "text/plain")
 
             st.subheader(f"Other Banks Files ({len(nonboc_df)} rows)")
@@ -408,10 +416,10 @@ if st.button("Run Process"):
             with col_oth1:
                 st.download_button("Download NonBOC CSV", nonboc_df.to_csv(index=False).encode('utf-8'), "NonBOC.csv", "text/csv")
             with col_oth2:
-                nonboc_xls = generate_17col_excel_bytes(nonboc_df, NSB_ACCOUNT_L)
+                nonboc_xls = generate_17col_excel_bytes(nonboc_df, OTHER_ACCOUNT_L)
                 st.download_button("Download NonBOC Excel", nonboc_xls, "NonBOC.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             with col_oth3:
-                nonboc_prn = generate_prn_bytes(nonboc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
+                nonboc_prn = generate_prn_bytes(nonboc_df, str(st.secrets["OTHER_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download NonBOC PRN", nonboc_prn, "NonBOC.prn", "text/plain")
 
         except Exception as e:
