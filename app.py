@@ -21,12 +21,14 @@ NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
 # Exact xlwt width units from reference file Customer_PaymentsSlips_24042026_BOC.xls
-# (read via xlrd formatting_info=True) plus 26 units (+0.1 chars) per column.
+# (read via xlrd formatting_info=True), adjusted for cross-machine rendering:
+# other machines render +0.13 chars wider (larger TNR 12pt MDW), so we subtract
+# 33 units (0.13 × 256 = 33.28 → 33) so widths land correctly on all machines.
 COL_WIDTHS_17 = {
-    'A': 1210, 'B': 1210, 'C': 954,  'D': 3258, 'E': 5306,
-    'F': 698,  'G': 2490, 'H': 3258, 'I': 954,  'J': 1210,
-    'K': 954,  'L': 3258, 'M': 5306, 'N': 4026, 'O': 4026,
-    'P': 1722, 'Q': 1722
+    'A': 1177, 'B': 1177, 'C': 921,  'D': 3225, 'E': 5273,
+    'F': 665,  'G': 2457, 'H': 3225, 'I': 921,  'J': 1177,
+    'K': 921,  'L': 3225, 'M': 5273, 'N': 3993, 'O': 3993,
+    'P': 1689, 'Q': 1689
 }
 
 # Col G format changed to 9 zeros (000000000) — value is always 0
