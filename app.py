@@ -4,7 +4,6 @@ import warnings
 import io
 import re
 import datetime
-import zipfile
 import xlwt
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
@@ -17,13 +16,10 @@ BANK_NAME_MAP = {
 }
 BANK_OF_CEYLON = "Bank of Ceylon"
 
+# Fetch secure account numbers from Streamlit Secrets
 NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
-# Exact xlwt width units from reference file Customer_PaymentsSlips_24042026_BOC.xls
-# (read via xlrd formatting_info=True), adjusted for cross-machine rendering:
-# other machines render +0.13 chars wider (larger TNR 12pt MDW), so we subtract
-# 33 units (0.13 × 256 = 33.28 → 33) so widths land correctly on all machines.
 COL_WIDTHS_17 = {
     'A': 1177, 'B': 1177, 'C': 921,  'D': 3225, 'E': 5273,
     'F': 665,  'G': 2457, 'H': 3225, 'I': 921,  'J': 1177,
@@ -31,8 +27,6 @@ COL_WIDTHS_17 = {
     'P': 1689, 'Q': 1689
 }
 
-# Col G format changed to 9 zeros (000000000) — value is always 0
-# Col L format stays 000000000000 (12 digits) — value is 857
 COL_FORMATS_17 = {
     'A': '0000', 'B': '0000', 'C': '000', 'D': '000000000000', 'E': 'General',
     'F': '00', 'G': '000000000', 'H': '000000000000', 'I': 'General',
@@ -40,7 +34,7 @@ COL_FORMATS_17 = {
     'N': 'General', 'O': 'General', 'P': '000000', 'Q': '000000'
 }
 
-SPLIT_THRESHOLD = 5_000_000
+SPLIT_THRESHOLD = 5000000
 
 def normalize_bank_name(name):
     if pd.isna(name): return name
@@ -68,7 +62,6 @@ def lookup_branch_code(branch_df, bank_name, branch_name):
     return str(bm.iloc[0]["Branch Code"]) if not bm.empty else "BRANCH NOT FOUND"
 
 def _split_amounts(amount_float):
-    """Split amount into chunks of <= SPLIT_THRESHOLD."""
     chunks = []
     remaining = round(amount_float, 2)
     while remaining > SPLIT_THRESHOLD:
@@ -161,24 +154,16 @@ def generate_nsb_excel_bytes(df):
     return buffer
 
 def _make_xls_style(fmt_str):
-    """Create an xlwt style with Times New Roman 12pt and the given number format."""
     style = xlwt.XFStyle()
     font = xlwt.Font()
     font.name = "Times New Roman"
-    font.height = 240  # 12pt = 12 * 20 twips
+    font.height = 240
     style.font = font
     if fmt_str and fmt_str != "General":
         style.num_format_str = fmt_str
     return style
 
 def _patch_xls_base_font(xls_bytes, new_height=240):
-    """
-    Patch all default Arial 10pt (height=200) FONT records in the BIFF8/OLE stream
-    to 12pt (height=240) in-place, without changing file size or breaking the OLE
-    container. Excel uses font index 0 as the MDW (Max Digit Width) reference for
-    column width calculations, so this makes xlwt column widths consistent with
-    the TNR 12pt base used in the PRN fixed-width character positions.
-    """
     import struct as _struct
     FONT_TYPE = 0x0031
     raw = bytearray(xls_bytes)
@@ -187,18 +172,12 @@ def _patch_xls_base_font(xls_bytes, new_height=240):
         rec_type = _struct.unpack_from("<H", raw, pos)[0]
         rec_len  = _struct.unpack_from("<H", raw, pos + 2)[0]
         if rec_type == FONT_TYPE and 10 < rec_len < 500:
-            if _struct.unpack_from("<H", raw, pos + 4)[0] == 200:  # Arial 10pt default
+            if _struct.unpack_from("<H", raw, pos + 4)[0] == 200:
                 _struct.pack_into("<H", raw, pos + 4, new_height)
         pos += 1
     return bytes(raw)
 
-def generate_17col_xls_bytes(df):
-    """
-    Generate 17-column XLS (Excel 97-2003) for BOC / NonBOC.
-    - Col G: value = 0, format 000000000 (9 zeros)
-    - Col L: value = 857, format 000000000000 (12 zeros) => displays 000000000857
-    - Amounts > 5,000,000 are split into multiple rows (same as PRN).
-    """
+def generate_17col_xls_bytes(df, account_l):
     def clean_account_number(acc):
         acc = str(acc).strip().replace("-", "").replace(" ", "")
         if len(acc) == 15:   acc = acc[3:]
@@ -230,21 +209,13 @@ def generate_17col_xls_bytes(df):
 
     wb = xlwt.Workbook()
 
-    # Set Font 0 (workbook default font) to Times New Roman 12pt.
-    # Excel uses Font 0 to calculate MDW (Maximum Digit Width), which is the
-    # reference unit for column widths. The reference file
-    # Customer_PaymentsSlips_24042026_BOC.xls has Font 0 = TNR 12pt.
-    # xlwt pre-registers Arial fonts at indices 0-3 before any user code runs.
-    # We must mutate those objects directly — setting default_style after the
-    # fact does not affect the already-registered font records.
     for font_obj, idx in wb._Workbook__styles._font_id2x.items():
         if idx in (0, 1, 2, 3):
             font_obj.name = "Times New Roman"
-            font_obj.height = 240  # 12pt = 12 × 20 twips
+            font_obj.height = 240
 
     ws = wb.add_sheet("Sheet")
 
-    # Set column widths (xlwt unit = 1/256 of character width)
     for i, c in enumerate(col_letters):
         ws.col(i).width = COL_WIDTHS_17[c]
 
@@ -261,23 +232,23 @@ def generate_17col_xls_bytes(df):
 
         for chunk in _split_amounts(raw_amount):
             row_data = [
-                0,                                          # A
-                to_int_safe(row.get("Bank Code",   0)),     # B
-                to_int_safe(row.get("Branch Code", 0)),     # C
-                acc_num,                                    # D
-                format_name(row.get("Customer Name", "")), # E
-                23,                                         # F
-                0,                                          # G — 000000000
-                format_amount_int(chunk),                   # H — amount × 100
-                "slr",                                      # I
-                7010,                                       # J
-                660,                                        # K
-                857,                                        # L — 000000000857
-                "NSBFMC",                                   # M
-                "NSBFMC",                                   # N
-                "NSBFMC",                                   # O
-                maturity_val,                               # P
-                0,                                          # Q
+                0,
+                to_int_safe(row.get("Bank Code",   0)),
+                to_int_safe(row.get("Branch Code", 0)),
+                acc_num,
+                format_name(row.get("Customer Name", "")),
+                23,
+                0,
+                format_amount_int(chunk),
+                "slr",
+                7010,
+                660,
+                int(account_l),
+                "NSBFMC",
+                "NSBFMC",
+                "NSBFMC",
+                maturity_val,
+                0,
             ]
             for col_idx, (val, c) in enumerate(zip(row_data, col_letters)):
                 ws.write(row_idx, col_idx, val, styles[c])
@@ -285,10 +256,8 @@ def generate_17col_xls_bytes(df):
 
     buf = io.BytesIO()
     wb.save(buf)
-    # Patch base font from Arial 10pt -> 12pt so column widths match PRN character positions
     patched = _patch_xls_base_font(buf.getvalue(), new_height=240)
     return io.BytesIO(patched)
-
 
 def generate_prn_bytes(df, account_l_str, acc_format_fn):
     def _clean_acc(acc):
@@ -361,6 +330,9 @@ def generate_prn_bytes(df, account_l_str, acc_format_fn):
 
     return "\r\n".join(lines).encode('utf-8')
 
+# Ensure memory state exists
+if "process_completed" not in st.session_state:
+    st.session_state.process_completed = False
 
 st.title("Payment List Processor")
 st.write("Upload your required files below.")
@@ -371,7 +343,12 @@ with col1:
 with col2:
     directory_file = st.file_uploader("Upload Bank Directory", type=["xlsx"])
 
+# Capture the button click and update memory state
 if st.button("Run Process"):
+    st.session_state.process_completed = True
+
+# Process data if state is true
+if st.session_state.process_completed:
     if payment_file is not None and directory_file is not None:
         st.write("Processing your files. Please wait.")
         try:
@@ -407,17 +384,6 @@ if st.button("Run Process"):
             boc_df = after_nsb_df[boc_mask].copy()
             nonboc_df = after_nsb_df[~boc_mask].copy()
 
-            # Check for lookup failures across all non-RTGS rows
-            failure_mask = (
-                work_df["Bank Code"].astype(str).str.contains("NOT FOUND", na=False) |
-                work_df["Branch Code"].astype(str).str.contains("NOT FOUND", na=False)
-            )
-            failed_df = work_df[failure_mask][["Customer Name", "Bank Name", "Branch Name", "Bank Code", "Branch Code"]]
-
-            if not failed_df.empty:
-                st.warning(f"⚠️ {len(failed_df)} row(s) had lookup failures. These rows will have 0000/000 in Bank/Branch Code fields in all output files. Please fix the Bank Directory or Payment List before using the outputs.")
-                st.dataframe(failed_df.reset_index(drop=True), use_container_width=True)
-
             st.success("Processing complete. Download your files below.")
 
             st.subheader(f"RTGS Files ({len(rtgs_df)} rows)")
@@ -444,10 +410,10 @@ if st.button("Run Process"):
             with col_boc1:
                 st.download_button("Download BOC CSV", boc_df.to_csv(index=False).encode('utf-8'), "BOC.csv", "text/csv")
             with col_boc2:
-                boc_xls = generate_17col_xls_bytes(boc_df)
+                boc_xls = generate_17col_xls_bytes(boc_df, OTHER_ACCOUNT_L)
                 st.download_button("Download BOC XLS", boc_xls, "BOC.xls", "application/vnd.ms-excel")
             with col_boc3:
-                boc_prn = generate_prn_bytes(boc_df, str(st.secrets["OTHER_ACCOUNT"]), lambda acc: acc.zfill(12))
+                boc_prn = generate_prn_bytes(boc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download BOC PRN", boc_prn, "BOC.prn", "text/plain")
 
             st.subheader(f"Other Banks Files ({len(nonboc_df)} rows)")
@@ -455,10 +421,10 @@ if st.button("Run Process"):
             with col_oth1:
                 st.download_button("Download NonBOC CSV", nonboc_df.to_csv(index=False).encode('utf-8'), "NonBOC.csv", "text/csv")
             with col_oth2:
-                nonboc_xls = generate_17col_xls_bytes(nonboc_df)
+                nonboc_xls = generate_17col_xls_bytes(nonboc_df, OTHER_ACCOUNT_L)
                 st.download_button("Download NonBOC XLS", nonboc_xls, "NonBOC.xls", "application/vnd.ms-excel")
             with col_oth3:
-                nonboc_prn = generate_prn_bytes(nonboc_df, str(st.secrets["OTHER_ACCOUNT"]), lambda acc: acc.zfill(12))
+                nonboc_prn = generate_prn_bytes(nonboc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
                 st.download_button("Download NonBOC PRN", nonboc_prn, "NonBOC.prn", "text/plain")
 
         except Exception as e:
@@ -466,3 +432,4 @@ if st.button("Run Process"):
 
     else:
         st.warning("Please upload both files before clicking Run Process.")
+        st.session_state.process_completed = False
