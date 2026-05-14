@@ -20,14 +20,13 @@ BANK_OF_CEYLON = "Bank of Ceylon"
 NSB_ACCOUNT_L = st.secrets["NSB_ACCOUNT"]
 OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 
-# Exact xlwt width units read directly from the reference file
-# Customer_PaymentsSlips_24042026_BOC.xls using xlrd with formatting_info=True.
-# These are raw 1/256-char units as stored in the BIFF record — no font math needed.
+# Exact xlwt width units from reference file Customer_PaymentsSlips_24042026_BOC.xls
+# (read via xlrd formatting_info=True) plus 26 units (+0.1 chars) per column.
 COL_WIDTHS_17 = {
-    'A': 1184, 'B': 1184, 'C': 928,  'D': 3232, 'E': 5280,
-    'F': 672,  'G': 2464, 'H': 3232, 'I': 928,  'J': 1184,
-    'K': 928,  'L': 3232, 'M': 5280, 'N': 4000, 'O': 4000,
-    'P': 1696, 'Q': 1696
+    'A': 1210, 'B': 1210, 'C': 954,  'D': 3258, 'E': 5306,
+    'F': 698,  'G': 2490, 'H': 3258, 'I': 954,  'J': 1210,
+    'K': 954,  'L': 3258, 'M': 5306, 'N': 4026, 'O': 4026,
+    'P': 1722, 'Q': 1722
 }
 
 # Col G format changed to 9 zeros (000000000) — value is always 0
