@@ -23,7 +23,7 @@ OTHER_ACCOUNT_L = st.secrets["OTHER_ACCOUNT"]
 # Base font patched to TNR 12pt in XML so MDW is consistent across machines.
 COL_WIDTHS_17 = {
     'A': 4.74, 'B': 4.74, 'C': 3.74, 'D': 12.74, 'E': 20.74,
-    'F': 2.74, 'G': 12.74, 'H': 12.74, 'I': 3.74, 'J': 4.74,
+    'F': 2.74, 'G': 9.74, 'H': 12.74, 'I': 3.74, 'J': 4.74,
     'K': 3.74, 'L': 12.74, 'M': 20.74, 'N': 15.74, 'O': 15.74,
     'P': 6.74, 'Q': 6.74
 }
