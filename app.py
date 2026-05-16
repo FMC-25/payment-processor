@@ -410,7 +410,7 @@ if st.session_state.process_completed:
             with col_boc1:
                 st.download_button("Download BOC CSV", boc_df.to_csv(index=False).encode('utf-8'), "BOC.csv", "text/csv")
             with col_boc2:
-                boc_xls = generate_17col_xls_bytes(boc_df, OTHER_ACCOUNT_L)
+                boc_xls = generate_17col_xls_bytes(boc_df, NSB_ACCOUNT_L)
                 st.download_button("Download BOC XLS", boc_xls, "BOC.xls", "application/vnd.ms-excel")
             with col_boc3:
                 boc_prn = generate_prn_bytes(boc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
@@ -421,7 +421,7 @@ if st.session_state.process_completed:
             with col_oth1:
                 st.download_button("Download NonBOC CSV", nonboc_df.to_csv(index=False).encode('utf-8'), "NonBOC.csv", "text/csv")
             with col_oth2:
-                nonboc_xls = generate_17col_xls_bytes(nonboc_df, OTHER_ACCOUNT_L)
+                nonboc_xls = generate_17col_xls_bytes(nonboc_df, NSB_ACCOUNT_L)
                 st.download_button("Download NonBOC XLS", nonboc_xls, "NonBOC.xls", "application/vnd.ms-excel")
             with col_oth3:
                 nonboc_prn = generate_prn_bytes(nonboc_df, str(st.secrets["NSB_ACCOUNT"]), lambda acc: acc.zfill(12))
